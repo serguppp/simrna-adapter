@@ -137,8 +137,25 @@ def _check_geometry(input_pdb: Path, reduced_pdb: Path, trajectory: Path) -> flo
     return displacement
 
 
+def _engine_provenance(vendor: Path) -> dict[str, Any]:
+    return {
+        "data_files_sha256": {
+            str(path.relative_to(vendor / "data")): _sha256(path)
+            for path in sorted((vendor / "data").rglob("*"))
+            if path.is_file()
+        },
+        "binary_sha256": _sha256(vendor / "SimRNA"),
+        "config_sha256": _sha256(vendor / "config_n0.dat"),
+    }
+
+
 def _native_score(
-    source: Path, output: Path, vendor: Path, seed: int, timeout: float
+    source: Path,
+    output: Path,
+    vendor: Path,
+    seed: int,
+    timeout: float,
+    provenance: dict[str, Any] | None = None,
 ) -> SimRNAResult:
     executable = vendor / "SimRNA"
     config = vendor / "config_n0.dat"
@@ -193,22 +210,15 @@ def _native_score(
         displacement = _check_geometry(
             output / "input.pdb", output / "score-000001.pdb", output / "score.trafl"
         )
-        data_hashes = {
-            str(path.relative_to(vendor / "data")): _sha256(path)
-            for path in sorted((vendor / "data").rglob("*"))
-            if path.is_file()
-        }
         metadata = {
             "max_bead_displacement_angstrom": displacement,
-            "data_files_sha256": data_hashes,
+            **(provenance if provenance is not None else _engine_provenance(vendor)),
             "engine": "SimRNA",
             "version": "3.20",
             "iterations": 0,
             "seed": seed,
             "units": "SimRNA statistical score (not kcal/mol)",
             "input_sha256": _sha256(source),
-            "binary_sha256": _sha256(executable),
-            "config_sha256": _sha256(config),
             "command": command,
             "seconds_engine": elapsed,
             "total_energy": total,
