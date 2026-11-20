@@ -91,3 +91,69 @@ separate authorization for commercial uses/services. See the official terms:
 `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
 `uv run mypy src`. Licensed-engine smoke tests are recorded separately in the
 RNA-frustratometer package's results directory, outside this repository.
+
+## Mutational frustration geometry
+
+Protocol version 3 fixes the native N1/N9 and sugar coordinates. A rigid template
+rotation aligns the N-to-C1' direction and the glycosidic chi-defining base plane
+(C4 for purines, C2 for pyrimidines). This preserves native chi using the native
+O4'-C1'-N reference. All base distances within the template are retained.
+Same-identity substitutions keep the input coordinates exactly.
+
+Scans now require full-atom reference and template PDBs containing C1' and the
+chi-defining base atom. Conversion to five-bead input happens after mutation.
+Contact selection still uses native base midpoints (default 8 angstrom).
+Run metadata identifies protocol 3. Earlier scans used different mutation geometry
+and should be rerun for comparisons under this protocol.
+
+## Pair and total frustration
+
+`run_simrna_frustration` now computes both strategies by default. Set
+`pair_energies=False` to retain the previous total-only runtime.
+`contact_scores.csv` has `F_pair`, `F_total`, their native energies, means and
+population SDs. `contact_variants.csv` retains total components and adds
+`native_E_pair`, `E_pair`, `delta_E_pair`, `native_E_total`.
+The legacy `F` column in `frustration.csv` still means `F_total`.
+
+For SimRNA, E_pair means nonlocal base-base plus base-backbone interactions
+between the selected residues (both directions). Short stacking is already in
+base-base. Local backbone strain is excluded. To obtain it from the licensed
+closed engine, all other residues are rigidly translated apart, preserving the
+full residue sequence, chain membership and adjacency. The chosen pair stays
+at its variant coordinates. E_total minus local geometry from this diagnostic
+run gives the nonlocal pair interaction. Do not interpret the artificial masked
+structure's total energy. No atoms in the actual scored mutants are relaxed.
+
+This needs 16 additional engine calls per contact, inside the same container.
+Pair energies have about 2e-6 numerical uncertainty from the six-decimal log
+output. F_pair is undefined (empty) when population SD is at most 2e-6.
+Native reconstruction of all pair energies is regression-tested against the
+full structure, allowing for printed rounding. Input topology and mutation
+geometry remain the same for both strategies. This is an adapter decomposition,
+not a native SimRNA per-contact export. Rebuild the Docker image after updating.
+
+## Shared mutation targets
+
+`select_simrna_contacts(pdb_path, cutoff=8.0)` returns the adapter's native
+contact list without running the licensed engine. It uses the same selector
+as a full scan: midpoint (N9+C6)/2 for A/G or (N1+C4)/2 for C/U.
+The cutoff selects pairs to mutate; it does not truncate SimRNA total energy.
+To compare models on exactly the same targets, pass the chosen list via
+`contacts=...` and the same four-ID CSV to cgRNASP `--contacts`.
+
+
+## Optional native-ring mutation geometry
+
+Pass `preserve_same_class_ring=True` to `run_simrna_frustration` to keep the
+observed base-ring coordinates for A/G and C/U exchanges. All three base beads
+then stay exactly fixed for these exchanges. Cross-class exchanges still use
+the N1/N9-anchored, glycosidic-chi-preserving template placement.
+
+The default is `False`, preserving the existing protocol. The opt-in policy is
+recorded as mutation protocol 4 in `run.json`; the existing policy remains 3.
+This is a geometry-sensitivity option, not energy minimization or a guarantee
+of clash-free mutants. Target-specific exocyclic groups and SimRNA's base shape
+still change. It adds no SimRNA engine calls.
+
+Rebuild `simrna-adapter:local` after updating the source. The Python API rejects
+an old image that silently ignores the requested native-ring policy.
